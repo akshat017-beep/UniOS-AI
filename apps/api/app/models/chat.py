@@ -42,6 +42,8 @@ class Message(Base):
     model: Mapped[str | None] = mapped_column(String(128))
     prompt_tokens: Mapped[int | None] = mapped_column(Integer)
     completion_tokens: Mapped[int | None] = mapped_column(Integer)
+    # JSON-encoded list of citations backing this answer (document, page, snippet).
+    citations: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")

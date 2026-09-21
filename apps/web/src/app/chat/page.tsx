@@ -11,6 +11,7 @@ import {
   type AIStatus,
   type AgentInfo,
   type ChatMessage,
+  type Citation,
   type Conversation,
   type RoutingInfo,
 } from "@/lib/api";
@@ -30,6 +31,8 @@ export default function ChatPage() {
   const [pending, setPending] = useState<Pending | null>(null);
   const [input, setInput] = useState("");
   const [agentOverride, setAgentOverride] = useState("");
+  const [useDocuments, setUseDocuments] = useState(false);
+  const [citations, setCitations] = useState<Citation[]>([]);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -91,17 +94,24 @@ export default function ChatPage() {
       },
     ]);
     setPending({ content: "", routing: null });
+    setCitations([]);
 
     let conversationId = activeId;
 
     await streamMessage(
       token,
-      { message: text, conversation_id: activeId, agent: agentOverride || null },
+      {
+        message: text,
+        conversation_id: activeId,
+        agent: agentOverride || null,
+        use_documents: useDocuments,
+      },
       {
         onMeta: (meta) => {
           conversationId = meta.conversation_id;
           setActiveId(meta.conversation_id);
           setRouting(meta.routing);
+          setCitations(meta.citations ?? []);
           setPending((p) => (p ? { ...p, routing: meta.routing } : p));
         },
         onToken: (piece) =>
@@ -191,6 +201,14 @@ export default function ChatPage() {
                     : "Your question is routed automatically to the right agent."}
                 </p>
               </div>
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={useDocuments}
+                  onChange={(event) => setUseDocuments(event.target.checked)}
+                />
+                Answer from my documents
+              </label>
               <select
                 value={agentOverride}
                 onChange={(event) => setAgentOverride(event.target.value)}
@@ -232,6 +250,15 @@ export default function ChatPage() {
                     {message.role === "user" ? "You" : `Assistant · ${message.agent ?? "agent"}`}
                   </p>
                   <p className="whitespace-pre-wrap">{message.content}</p>
+                  {message.citations && message.citations.length > 0 ? (
+                    <ul className="mt-2 space-y-1 border-t pt-2 text-xs text-muted-foreground">
+                      {message.citations.map((citation, index) => (
+                        <li key={index}>
+                          [{index + 1}] {citation.document_title} — page {citation.page}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </article>
               ))}
 
@@ -241,6 +268,15 @@ export default function ChatPage() {
                     {pending.routing ? `Assistant · ${pending.routing.title}` : "Thinking…"}
                   </p>
                   <p className="whitespace-pre-wrap">{pending.content || "…"}</p>
+                  {citations.length > 0 ? (
+                    <ul className="mt-2 space-y-1 border-t pt-2 text-xs text-muted-foreground">
+                      {citations.map((citation, index) => (
+                        <li key={index}>
+                          [{index + 1}] {citation.document_title} — page {citation.page}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </article>
               ) : null}
 

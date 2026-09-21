@@ -39,12 +39,19 @@ def academic_context(user: User) -> str:
 
 
 def build_prompt(
-    *, agent: Agent, user: User, history: list[Message], message: str
+    *,
+    agent: Agent,
+    user: User,
+    history: list[Message],
+    message: str,
+    context: str = "",
 ) -> list[ChatMessage]:
     prompt: list[ChatMessage] = [
         ChatMessage("system", agent.system_prompt),
         ChatMessage("system", academic_context(user)),
     ]
+    if context:
+        prompt.append(ChatMessage("system", context))
     for item in history[-settings.chat_history_limit :]:
         if item.role in ("user", "assistant"):
             prompt.append(ChatMessage(item.role, item.content))  # type: ignore[arg-type]

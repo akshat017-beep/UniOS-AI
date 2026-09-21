@@ -82,6 +82,14 @@ export interface RoutingInfo {
   signals: string[];
 }
 
+export interface Citation {
+  document_id: string;
+  document_title: string;
+  page: number;
+  snippet: string;
+  score: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -89,6 +97,125 @@ export interface ChatMessage {
   agent: string | null;
   model: string | null;
   created_at: string;
+  citations?: Citation[];
+}
+
+export interface UniDocument {
+  id: string;
+  title: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  pages: number;
+  status: string;
+  error: string | null;
+  created_at: string;
+}
+
+export interface RagStatus {
+  embeddings_configured: boolean;
+  provider: string;
+  model: string | null;
+  vector_backend: string;
+  detail: string;
+}
+
+export interface GenerationResult {
+  content: string;
+  model: string;
+  agent: string;
+  citations: Citation[];
+  injection_warnings: string[];
+}
+
+export interface CodingStatus {
+  execution_enabled: boolean;
+  languages: { id: string; label: string; available: boolean }[];
+  timeout_seconds: number;
+  isolation_note: string;
+}
+
+export interface RunResult {
+  stdout: string;
+  stderr: string;
+  exit_code: number;
+  timed_out: boolean;
+  language: string;
+}
+
+export interface UniNotification {
+  id: string;
+  title: string;
+  body: string;
+  category: string;
+  link: string | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  starts_at: string;
+  ends_at: string | null;
+  source: string;
+}
+
+export interface PlannedItem {
+  title: string;
+  description: string;
+  category: string;
+  starts_at: string;
+  ends_at: string | null;
+}
+
+export interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  audience: string;
+  is_published: boolean;
+  created_at: string;
+  author_id: string;
+}
+
+export interface SearchHit {
+  kind: string;
+  id: string;
+  title: string;
+  snippet: string;
+  link: string;
+}
+
+export interface AdminStats {
+  users_total: number;
+  users_by_role: Record<string, number>;
+  conversations_total: number;
+  messages_total: number;
+  documents_total: number;
+  document_chunks_total: number;
+  announcements_total: number;
+  ai_configured: boolean;
+  embeddings_configured: boolean;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  full_name: string;
+  role: UserRole;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface MultimodalStatus {
+  vision_configured: boolean;
+  vision_model: string | null;
+  transcription_configured: boolean;
+  transcription_model: string | null;
+  detail: string;
 }
 
 export interface Conversation {
@@ -139,16 +266,185 @@ export const api = {
   deleteConversation: (token: string, id: string) =>
     request<void>(`/chat/conversations/${id}`, { method: "DELETE" }, token),
 
-  sendMessage: (
-    token: string,
-    input: { message: string; conversation_id?: string | null; agent?: string | null },
-  ) =>
+  sendMessage: (token: string, input: SendMessageInput) =>
     request<{ conversation_id: string; routing: RoutingInfo; message: ChatMessage }>(
       "/chat/messages",
       { method: "POST", body: JSON.stringify(input) },
       token,
     ),
+
+  // ----------------------------------------------------------------- documents
+  ragStatus: (token: string) => request<RagStatus>("/documents/status", { method: "GET" }, token),
+
+  documents: (token: string) => request<UniDocument[]>("/documents", { method: "GET" }, token),
+
+  uploadDocument: async (token: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    const response = await fetch(`${API_URL}/api/v1/documents`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new ApiError(
+        (body && typeof body.detail === "string" && body.detail) || "Upload failed",
+        response.status,
+      );
+    }
+    return body as UniDocument;
+  },
+
+  deleteDocument: (token: string, id: string) =>
+    request<void>(`/documents/${id}`, { method: "DELETE" }, token),
+
+  searchDocuments: (token: string, input: { query: string; document_ids?: string[] }) =>
+    request<{ citations: Citation[]; injection_warnings: string[] }>(
+      "/documents/search",
+      { method: "POST", body: JSON.stringify(input) },
+      token,
+    ),
+
+  // --------------------------------------------------------------- workspaces
+  studyMaterial: (
+    token: string,
+    input: { topic: string; format: string; level?: string; document_ids?: string[] },
+  ) =>
+    request<GenerationResult>(
+      "/tools/study-material",
+      { method: "POST", body: JSON.stringify(input) },
+      token,
+    ),
+
+  research: (token: string, input: { topic: string; format: string; document_ids?: string[] }) =>
+    request<GenerationResult>(
+      "/tools/research",
+      { method: "POST", body: JSON.stringify(input) },
+      token,
+    ),
+
+  resume: (token: string, input: Record<string, string>) =>
+    request<GenerationResult>("/tools/resume", { method: "POST", body: JSON.stringify(input) }, token),
+
+  codingStatus: (token: string) =>
+    request<CodingStatus>("/coding/status", { method: "GET" }, token),
+
+  runCode: (token: string, input: { language: string; source: string; stdin?: string }) =>
+    request<RunResult>("/coding/run", { method: "POST", body: JSON.stringify(input) }, token),
+
+  multimodalStatus: (token: string) =>
+    request<MultimodalStatus>("/multimodal/status", { method: "GET" }, token),
+
+  transcribe: async (token: string, file: Blob, filename = "recording.webm") => {
+    const form = new FormData();
+    form.append("file", file, filename);
+    const response = await fetch(`${API_URL}/api/v1/multimodal/transcribe`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new ApiError(
+        (body && typeof body.detail === "string" && body.detail) || "Transcription failed",
+        response.status,
+      );
+    }
+    return body as { text: string; model: string };
+  },
+
+  askAboutImage: async (token: string, file: File, question: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("question", question);
+    const response = await fetch(`${API_URL}/api/v1/multimodal/image`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new ApiError(
+        (body && typeof body.detail === "string" && body.detail) || "Image request failed",
+        response.status,
+      );
+    }
+    return body as { answer: string; model: string };
+  },
+
+  // ------------------------------------------------------------ campus platform
+  notifications: (token: string) =>
+    request<UniNotification[]>("/university/notifications", { method: "GET" }, token),
+
+  markNotificationRead: (token: string, id: string) =>
+    request<UniNotification>(`/university/notifications/${id}/read`, { method: "POST" }, token),
+
+  events: (token: string, days = 30) =>
+    request<CalendarEvent[]>(`/university/events?days=${days}`, { method: "GET" }, token),
+
+  createEvent: (
+    token: string,
+    input: { title: string; description?: string; category?: string; starts_at: string; ends_at?: string | null },
+  ) =>
+    request<CalendarEvent>("/university/events", { method: "POST", body: JSON.stringify(input) }, token),
+
+  deleteEvent: (token: string, id: string) =>
+    request<void>(`/university/events/${id}`, { method: "DELETE" }, token),
+
+  planSchedule: (
+    token: string,
+    input: { goal: string; days: number; hours_per_day: number; save: boolean },
+  ) =>
+    request<{ items: PlannedItem[]; saved: boolean; model: string; note: string }>(
+      "/university/plan",
+      { method: "POST", body: JSON.stringify(input) },
+      token,
+    ),
+
+  announcements: (token: string) =>
+    request<Announcement[]>("/university/announcements", { method: "GET" }, token),
+
+  createAnnouncement: (
+    token: string,
+    input: { title: string; body: string; audience?: string; notify?: boolean },
+  ) =>
+    request<Announcement>(
+      "/university/announcements",
+      { method: "POST", body: JSON.stringify(input) },
+      token,
+    ),
+
+  deleteAnnouncement: (token: string, id: string) =>
+    request<void>(`/university/announcements/${id}`, { method: "DELETE" }, token),
+
+  search: (token: string, query: string) =>
+    request<{ query: string; hits: SearchHit[] }>(
+      `/search?q=${encodeURIComponent(query)}`,
+      { method: "GET" },
+      token,
+    ),
+
+  // -------------------------------------------------------------------- admin
+  adminStats: (token: string) => request<AdminStats>("/admin/stats", { method: "GET" }, token),
+
+  adminUsers: (token: string, q = "") =>
+    request<AdminUser[]>(`/admin/users${q ? `?q=${encodeURIComponent(q)}` : ""}`, { method: "GET" }, token),
+
+  setUserActive: (token: string, id: string, isActive: boolean) =>
+    request<AdminUser>(`/admin/users/${id}/active?is_active=${isActive}`, { method: "POST" }, token),
+
+  adminMetrics: (token: string) =>
+    request<Record<string, unknown>>("/admin/metrics", { method: "GET" }, token),
 };
+
+export interface SendMessageInput {
+  message: string;
+  conversation_id?: string | null;
+  agent?: string | null;
+  document_ids?: string[] | null;
+  use_documents?: boolean;
+}
 
 /**
  * Streamed reply over server-sent events. Falls back to an error callback when
@@ -156,9 +452,14 @@ export const api = {
  */
 export async function streamMessage(
   token: string,
-  input: { message: string; conversation_id?: string | null; agent?: string | null },
+  input: SendMessageInput,
   handlers: {
-    onMeta?: (meta: { conversation_id: string; routing: RoutingInfo }) => void;
+    onMeta?: (meta: {
+      conversation_id: string;
+      routing: RoutingInfo;
+      citations?: Citation[];
+      injection_warnings?: string[];
+    }) => void;
     onToken?: (text: string) => void;
     onError?: (detail: string) => void;
     onDone?: () => void;

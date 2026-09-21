@@ -1,0 +1,166 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { WorkspacePage } from "@/components/require-auth";
+import { api, type GenerationResult, type UniDocument } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+
+const FORMATS = [
+  { id: "summary", label: "Revision summary" },
+  { id: "notes", label: "Study notes" },
+  { id: "flashcards", label: "Flashcards" },
+  { id: "quiz", label: "Practice quiz" },
+  { id: "plan", label: "Study plan" },
+];
+
+export default function StudyPage() {
+  const { token } = useAuth();
+  const [topic, setTopic] = useState("");
+  const [format, setFormat] = useState("summary");
+  const [level, setLevel] = useState("undergraduate");
+  const [documents, setDocuments] = useState<UniDocument[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [result, setResult] = useState<GenerationResult | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    api
+      .documents(token)
+      .then((list) => setDocuments(list.filter((item) => item.status === "ready")))
+      .catch(() => undefined);
+  }, [token]);
+
+  async function generate(event: React.FormEvent) {
+    event.preventDefault();
+    if (!token || topic.trim().length < 2) return;
+    setBusy(true);
+    setError("");
+    setResult(null);
+    try {
+      setResult(
+        await api.studyMaterial(token, {
+          topic,
+          format,
+          level,
+          document_ids: selected.length ? selected : undefined,
+        }),
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Generation failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <WorkspacePage
+      title="Study workspace"
+      description="Turn a topic — or your own uploaded material — into notes, flashcards, quizzes and plans."
+    >
+      <form onSubmit={generate} className="card mb-8 space-y-4 p-5">
+        <div>
+          <label className="text-sm font-medium" htmlFor="topic">
+            Topic or question
+          </label>
+          <textarea
+            id="topic"
+            className="field mt-1 min-h-24 w-full"
+            value={topic}
+            onChange={(event) => setTopic(event.target.value)}
+            placeholder="Normalisation in DBMS up to BCNF"
+          />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="text-sm font-medium" htmlFor="format">
+              Output
+            </label>
+            <select
+              id="format"
+              className="field mt-1 w-full"
+              value={format}
+              onChange={(event) => setFormat(event.target.value)}
+            >
+              {FORMATS.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-sm font-medium" htmlFor="level">
+              Level
+            </label>
+            <input
+              id="level"
+              className="field mt-1 w-full"
+              value={level}
+              onChange={(event) => setLevel(event.target.value)}
+            />
+          </div>
+        </div>
+
+        {documents.length > 0 ? (
+          <fieldset>
+            <legend className="text-sm font-medium">Ground it in my documents (optional)</legend>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {documents.map((document) => {
+                const active = selected.includes(document.id);
+                return (
+                  <button
+                    key={document.id}
+                    type="button"
+                    onClick={() =>
+                      setSelected((current) =>
+                        active
+                          ? current.filter((id) => id !== document.id)
+                          : [...current, document.id],
+                      )
+                    }
+                    className={
+                      active
+                        ? "rounded-lg bg-primary px-3 py-1.5 text-xs text-primary-foreground"
+                        : "rounded-lg border px-3 py-1.5 text-xs text-muted-foreground"
+                    }
+                  >
+                    {document.title}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+        ) : null}
+
+        <button className="btn-primary px-4 py-2 text-sm" disabled={busy}>
+          {busy ? "Generating…" : "Generate"}
+        </button>
+      </form>
+
+      {error ? <p className="mb-6 text-sm text-red-500">{error}</p> : null}
+
+      {result ? (
+        <article className="card p-5">
+          <p className="mb-3 text-xs text-muted-foreground">
+            Generated by {result.model} · {result.agent} agent
+          </p>
+          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
+            {result.content}
+          </pre>
+          {result.citations.length > 0 ? (
+            <ul className="mt-4 space-y-1 border-t pt-3 text-xs text-muted-foreground">
+              {result.citations.map((citation, index) => (
+                <li key={index}>
+                  [{index + 1}] {citation.document_title} — page {citation.page}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </article>
+      ) : null}
+    </WorkspacePage>
+  );
+}

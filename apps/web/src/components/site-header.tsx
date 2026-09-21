@@ -27,6 +27,9 @@ export function SiteHeader() {
               <Link href="/chat" className="btn-ghost px-3 py-2 text-sm">
                 Assistant
               </Link>
+              <Link href="/documents" className="btn-ghost px-3 py-2 text-sm">
+                Documents
+              </Link>
               <Link href="/dashboard" className="btn-ghost px-3 py-2 text-sm">
                 Dashboard
               </Link>

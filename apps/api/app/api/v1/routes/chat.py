@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.chat import Conversation, Message
 from app.models.user import User
+from app.rag.pipeline import retrieve
 from app.schemas.chat import (
     ConversationDetail,
     ConversationOut,
@@ -70,7 +71,7 @@ def delete_conversation(
     db.commit()
 
 
-def _prepare(payload: SendMessageRequest, user: User, db: Session):
+async def _prepare(payload: SendMessageRequest, user: User, db: Session):
     if payload.conversation_id:
         conversation = get_conversation(db, user, payload.conversation_id)
         if conversation is None:
@@ -104,8 +105,37 @@ def _prepare(payload: SendMessageRequest, user: User, db: Session):
         )
     )
     db.flush()
-    prompt = build_prompt(agent=agent, user=user, history=history, message=payload.message)
-    return conversation, agent, routing, prompt
+
+    retrieval = None
+    if payload.use_documents or payload.document_ids:
+        try:
+            retrieval = await retrieve(
+                db,
+                user_id=user.id,
+                query=payload.message,
+                document_ids=payload.document_ids,
+            )
+        except ProviderNotConfiguredError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+            ) from exc
+        if retrieval.has_context:
+            agent = get_agent("document")
+            routing = RoutingInfo(
+                agent=agent.name,
+                title=agent.title,
+                confidence=1.0,
+                signals=["document context attached"],
+            )
+
+    prompt = build_prompt(
+        agent=agent,
+        user=user,
+        history=history,
+        message=payload.message,
+        context=retrieval.context if retrieval else "",
+    )
+    return conversation, agent, routing, prompt, retrieval
 
 
 def _model_or_503():
@@ -124,7 +154,7 @@ async def send_message(
     db: Session = Depends(get_db),
 ) -> SendMessageResponse:
     model = _model_or_503()
-    conversation, agent, routing, prompt = _prepare(payload, user, db)
+    conversation, agent, routing, prompt, retrieval = await _prepare(payload, user, db)
 
     try:
         result = await model.complete(
@@ -144,6 +174,20 @@ async def send_message(
         model=result.model,
         prompt_tokens=result.prompt_tokens,
         completion_tokens=result.completion_tokens,
+        citations=json.dumps(
+            [
+                {
+                    "document_id": str(citation.document_id),
+                    "document_title": citation.document_title,
+                    "page": citation.page,
+                    "snippet": citation.snippet,
+                    "score": citation.score,
+                }
+                for citation in retrieval.citations
+            ]
+        )
+        if retrieval and retrieval.citations
+        else None,
     )
     db.add(reply)
     db.commit()
@@ -153,6 +197,7 @@ async def send_message(
         conversation_id=conversation.id,
         routing=routing,
         message=MessageOut.model_validate(reply),
+        injection_warnings=retrieval.injection_warnings if retrieval else [],
     )
 
 
@@ -164,8 +209,24 @@ async def stream_message(
 ) -> StreamingResponse:
     """Server-sent events: `meta`, then `token` events, then `done` or `error`."""
     model = _model_or_503()
-    conversation, agent, routing, prompt = _prepare(payload, user, db)
+    conversation, agent, routing, prompt, retrieval = await _prepare(payload, user, db)
     db.commit()
+    citations_json = (
+        json.dumps(
+            [
+                {
+                    "document_id": str(citation.document_id),
+                    "document_title": citation.document_title,
+                    "page": citation.page,
+                    "snippet": citation.snippet,
+                    "score": citation.score,
+                }
+                for citation in retrieval.citations
+            ]
+        )
+        if retrieval and retrieval.citations
+        else None
+    )
     conversation_id = conversation.id
 
     async def events() -> AsyncIterator[str]:
@@ -173,7 +234,13 @@ async def stream_message(
             return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
         yield sse(
-            "meta", {"conversation_id": str(conversation_id), "routing": routing.model_dump()}
+            "meta",
+            {
+                "conversation_id": str(conversation_id),
+                "routing": routing.model_dump(),
+                "citations": json.loads(citations_json) if citations_json else [],
+                "injection_warnings": retrieval.injection_warnings if retrieval else [],
+            },
         )
         buffer: list[str] = []
         try:
@@ -196,6 +263,7 @@ async def stream_message(
                 content=content,
                 agent=agent.name,
                 model=model.name,
+                citations=citations_json,
             )
         )
         db.commit()

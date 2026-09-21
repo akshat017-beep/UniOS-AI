@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.observability import RateLimitMiddleware, RequestContextMiddleware
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,7 +26,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
+# Order matters: the rate limiter runs before the handler, the context middleware
+# wraps everything so every response carries a request id.
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(RequestContextMiddleware)
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
 

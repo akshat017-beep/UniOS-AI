@@ -33,6 +33,43 @@ class Settings(BaseSettings):
     ai_max_output_tokens: int = 1200
     chat_history_limit: int = 20
 
+    # Optional separate model for vision (multimodal) requests.
+    ai_vision_model: str = ""
+    # Optional speech-to-text model on an OpenAI-compatible /audio/transcriptions route.
+    ai_transcription_model: str = ""
+
+    # Embeddings — may point at a different endpoint than the chat model.
+    embedding_provider: str = "openai_compatible"
+    embedding_base_url: str = ""
+    embedding_api_key: str = ""
+    embedding_model: str = ""
+    embedding_dimensions: int = 1536
+    embedding_batch_size: int = 64
+
+    # Retrieval
+    vector_backend: str = "pgvector"
+    chunk_size_words: int = 220
+    chunk_overlap_words: int = 40
+    retrieval_top_k: int = 6
+    retrieval_min_score: float = 0.05
+
+    # Uploads
+    upload_dir: str = "./var/uploads"
+    max_upload_mb: int = 20
+
+    # Rate limiting (per client IP, sliding window)
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = 120
+    rate_limit_window_seconds: int = 60
+    ai_rate_limit_requests: int = 20
+    ai_rate_limit_window_seconds: int = 60
+
+    # Sandboxed code execution
+    code_execution_enabled: bool = True
+    code_execution_timeout_seconds: int = 8
+    code_execution_max_output_chars: int = 20000
+    code_execution_memory_mb: int = 256
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

@@ -1,7 +1,10 @@
+import json
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.schemas.document import CitationOut
 
 
 class AgentInfo(BaseModel):
@@ -30,6 +33,17 @@ class MessageOut(BaseModel):
     agent: str | None
     model: str | None
     created_at: datetime
+    citations: list[CitationOut] = []
+
+    @field_validator("citations", mode="before")
+    @classmethod
+    def _parse_citations(cls, value: object) -> object:
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except json.JSONDecodeError:
+                return []
+        return value or []
 
 
 class ConversationOut(BaseModel):
@@ -49,12 +63,16 @@ class SendMessageRequest(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
     conversation_id: UUID | None = None
     agent: str | None = Field(default=None, max_length=32)
+    # Restrict retrieval to these documents; omit to search everything the user owns.
+    document_ids: list[UUID] | None = None
+    use_documents: bool = False
 
 
 class SendMessageResponse(BaseModel):
     conversation_id: UUID
     routing: RoutingInfo
     message: MessageOut
+    injection_warnings: list[str] = []
 
 
 class AIStatus(BaseModel):

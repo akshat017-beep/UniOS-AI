@@ -230,12 +230,12 @@ cd apps/web && npm run lint  # lint + type-check
 
 - [x] Phase 1 — Foundation: monorepo, auth, dashboard, database, Docker, CI
 - [x] Phase 2 — AI core: provider abstraction, chat API, streaming, agent router
-- [ ] Phase 3 — RAG: ingestion, chunking, embeddings, retrieval, citations
-- [ ] Phase 4 — Agents: study, research, coding, career, document, campus
-- [ ] Phase 5 — Multimodal: vision, OCR, speech-to-text, text-to-speech
-- [ ] Phase 6 — University platform: academics, calendar, events, admin
-- [ ] Phase 7 — Reliability: evaluation, observability, rate limiting
-- [ ] Phase 8 — Deployment: production Docker, CI/CD, migrations
+- [x] Phase 3 — RAG: ingestion, chunking, embeddings, retrieval, citations
+- [x] Phase 4 — Agents: study, research, coding, career, document, campus
+- [x] Phase 5 — Multimodal: vision, OCR, speech-to-text, text-to-speech
+- [x] Phase 6 — University platform: academics, calendar, events, admin
+- [x] Phase 7 — Reliability: evaluation, observability, rate limiting
+- [x] Phase 8 — Deployment: production Docker, CI/CD, migrations
 
 ## Contributing
 

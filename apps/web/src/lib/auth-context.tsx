@@ -12,6 +12,7 @@ import {
 
 interface AuthState {
   user: User | null;
+  token: string | null;
   loading: boolean;
   register: (input: {
     email: string;
@@ -38,6 +39,7 @@ function clearTokens() {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadSession = useCallback(async () => {
@@ -45,11 +47,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const refresh = localStorage.getItem(REFRESH_TOKEN_KEY);
     if (!access) {
       setUser(null);
+      setToken(null);
       setLoading(false);
       return;
     }
     try {
       setUser(await api.me(access));
+      setToken(access);
     } catch {
       // Access token expired — try the refresh token once before signing out.
       if (refresh) {
@@ -57,13 +61,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const tokens = await api.refresh(refresh);
           storeTokens(tokens);
           setUser(await api.me(tokens.access_token));
+          setToken(tokens.access_token);
         } catch {
           clearTokens();
           setUser(null);
+          setToken(null);
         }
       } else {
         clearTokens();
         setUser(null);
+        setToken(null);
       }
     } finally {
       setLoading(false);
@@ -77,6 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AuthState>(
     () => ({
       user,
+      token,
       loading,
       register: async (input) => {
         storeTokens(await api.register(input));
@@ -91,10 +99,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (access) await api.logout(access).catch(() => undefined);
         clearTokens();
         setUser(null);
+        setToken(null);
       },
       hasRole: (...roles) => (user ? roles.includes(user.role) : false),
     }),
-    [user, loading, loadSession],
+    [user, token, loading, loadSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

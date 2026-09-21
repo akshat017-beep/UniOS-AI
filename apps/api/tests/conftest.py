@@ -2,6 +2,13 @@ import os
 
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///./test.db")
 os.environ.setdefault("JWT_SECRET", "test-secret-value-for-tests-only")
+# Deterministic offline embeddings and the portable vector store keep retrieval
+# tests honest without calling any provider. Rate limiting is off so the suite
+# is not throttled by its own speed.
+os.environ.setdefault("EMBEDDING_PROVIDER", "hashing")
+os.environ.setdefault("EMBEDDING_DIMENSIONS", "256")
+os.environ.setdefault("VECTOR_BACKEND", "portable")
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
